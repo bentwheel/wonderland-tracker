@@ -59,11 +59,12 @@ If `node` is older than v18, **stop** — better-sqlite3/sharp need a modern Nod
 
 ## Step 1 — [CAMERON-ROOT] Create and hand over the app directory
 
-Using the username/group Cicero reported in Step 0 (call it `CUSER:CGROUP`):
+Using the username/group Cicero reported in Step 0 (call it `CUSER:CGROUP`).
+Create the directory EMPTY (so `git clone` can populate it in Step 2):
 
 ```bash
-sudo mkdir -p /opt/wonderland-tracker/data/photos
-sudo chown -R CUSER:CGROUP /opt/wonderland-tracker
+sudo mkdir -p /opt/wonderland-tracker
+sudo chown CUSER:CGROUP /opt/wonderland-tracker
 ```
 
 That's it for root, for now. The directory is now fully owned by Cicero's user,
@@ -71,18 +72,22 @@ so every remaining app step is unprivileged.
 
 ---
 
-## Step 2 — [CICERO] Place the build files
+## Step 2 — [CICERO] Clone the repository
 
-Copy the package contents into the now-owned directory (adjust `SOURCE` to the
-path reported in Step 0, e.g. `/tmp/wonderland-tracker-build`):
+The whole deployment is a git repo; the repo root IS `/opt/wonderland-tracker`.
+Clone it into the empty directory from Step 1:
 
 ```bash
-SOURCE=/tmp/wonderland-tracker-build
-cp -r "$SOURCE/poller" /opt/wonderland-tracker/
-cp -r "$SOURCE/api"    /opt/wonderland-tracker/
-cp -r "$SOURCE/deploy" /opt/wonderland-tracker/
-# (public/ is NOT copied here — it goes through Cameron's static pipeline, Step 9.)
+git clone https://github.com/bentwheel/wonderland-tracker.git /opt/wonderland-tracker
 ls -la /opt/wonderland-tracker
+```
+
+This populates `poller/`, `api/`, `public/`, `deploy/`, and an empty `data/photos/`.
+Runtime files (`data/locations.db`, uploaded photos, `api/.env`) are gitignored and
+created in later steps.
+
+> Updating later is just `git -C /opt/wonderland-tracker pull` — see
+> "Updating the deployment" near the end of this file.
 ```
 
 ---
@@ -254,6 +259,40 @@ tail -n 100 /opt/wonderland-tracker/data/poller.log        # [CICERO]
 sqlite3 /opt/wonderland-tracker/data/locations.db 'SELECT * FROM poll_status;'
 sqlite3 /opt/wonderland-tracker/data/locations.db 'SELECT COUNT(*), MAX(timestamp) FROM locations;'
 ```
+
+---
+
+## Updating the deployment (git pull)
+
+When new code is pushed to GitHub, redeploying is a pull + dependency refresh +
+restart. The pull and install are unprivileged [CICERO]; only the service
+restart needs root [CAMERON].
+
+```bash
+# [CICERO] Pull latest and refresh the API:
+cd /opt/wonderland-tracker
+git pull --ff-only
+cd api
+npm install            # only strictly needed if package.json changed; safe to always run
+node migrate.js        # applies any new schema columns (idempotent)
+```
+```bash
+# [CAMERON-ROOT] Restart the service to pick up the new API code:
+sudo systemctl restart tracker-api.service
+curl -fsS http://127.0.0.1:8787/api/health
+```
+
+Frontend updates (`public/wonderland-2026/`) land in the repo via the same
+`git pull`. How they reach the live site depends on Open Question 1:
+- **cslester.com served on wavebeam:** point the web root for `/wonderland-2026`
+  at `/opt/wonderland-tracker/public/wonderland-2026` (or symlink it). Then a
+  `git pull` updates the site directly — no copy step. Remember to cache-bust
+  (the asset links use `?v=` query strings; bump them on a breaking change).
+- **cslester.com hosted elsewhere:** publish `public/wonderland-2026/` through
+  Cameron's existing pipeline as usual.
+
+> If `git pull` reports local changes blocking the merge (e.g. someone edited a
+> file on the server), STOP and ask Cameron — don't force or discard.
 
 ---
 
