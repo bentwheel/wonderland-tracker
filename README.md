@@ -96,8 +96,10 @@ Server deployment is performed by Cicero on wavebeam following
 ## Known limitations / open items
 
 - API listens on **8788** (8787 is taken by RStudio Server on wavebeam).
-- HEIC conversion depends on `sharp` building with libheif on wavebeam; the API
-  falls back to storing raw bytes if it can't convert.
+- HEIC→JPEG uses `heic-convert` (pure JS); `sharp` then resizes. EXIF GPS is read
+  from the original HEIC. Note: iOS strips GPS when it transcodes HEIC→JPEG on
+  upload — shoot in "Most Compatible" (JPEG) or upload originals via the Files
+  app to preserve location.
 - "Approximate location" is derived from the nearest camp, not named trail
   features — good enough for MVP, no POI dataset wired in.
 - "Highest point today" is the max elevation among today's pings, not a named

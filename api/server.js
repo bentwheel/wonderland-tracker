@@ -28,16 +28,24 @@ const exifr = require('exifr');
 
 const db = require('./db');
 
-// sharp handles EXIF rotation, resizing, and HEIC->JPEG. It's the recommended
-// path but depends on libvips/libheif being present. Load it defensively so the
-// API still boots (and falls back to storing raw bytes) if it's unavailable.
+// sharp handles EXIF rotation and resizing. Load it defensively so the API still
+// boots (and falls back to storing raw bytes) if it's unavailable.
 let sharp = null;
 try {
   sharp = require('sharp');
 } catch (e) {
-  console.warn(
-    '[startup] sharp not available — photos will be stored as-is, no HEIC->JPEG conversion'
-  );
+  console.warn('[startup] sharp not available — photos stored without resizing');
+}
+
+// heic-convert decodes HEIC/HEIF to JPEG in pure JS (no system libheif needed,
+// unlike sharp's prebuilt binaries). We run it BEFORE sharp so HEIC uploads from
+// iPhones become web-displayable JPEGs. EXIF/GPS is read from the original HEIC
+// bytes separately (exifr), so conversion losing metadata doesn't matter.
+let heicConvert = null;
+try {
+  heicConvert = require('heic-convert');
+} catch (e) {
+  console.warn('[startup] heic-convert not available — HEIC stored as-is (Safari-only display)');
 }
 
 // 8788, not 8787 — 8787 is already taken on wavebeam (RStudio Server).
@@ -145,6 +153,22 @@ function nearRoute(lat, lon) {
   return ROUTE_ANCHORS.some(
     ([rlat, rlon]) => haversineMi(lat, lon, rlat, rlon) <= GEO_NEAR_ROUTE_MI
   );
+}
+
+// Detect HEIC/HEIF by mimetype, extension, or the ISO-BMFF "ftyp" brand. iOS
+// uploads often arrive as application/octet-stream, so the magic-byte check is
+// the reliable one.
+function isHeic(file) {
+  const mt = (file.mimetype || '').toLowerCase();
+  if (mt.includes('heic') || mt.includes('heif')) return true;
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  if (ext === '.heic' || ext === '.heif') return true;
+  const b = file.buffer;
+  if (b && b.length > 12 && b.toString('ascii', 4, 8) === 'ftyp') {
+    const brand = b.toString('ascii', 8, 12).toLowerCase();
+    if (['heic', 'heix', 'heif', 'hevc', 'mif1', 'msf1'].includes(brand)) return true;
+  }
+  return false;
 }
 
 // Pull capture time + GPS from image EXIF. Works on JPEG and HEIC (exifr reads
@@ -306,12 +330,22 @@ app.post('/admin/upload', requireAdmin, upload.single('photo'), async (req, res)
   }
   console.log(`[upload] captured_at=${capturedAtValue} placement=${gpsSource}`);
 
-  // Try the nice path: normalize to a right-sized, EXIF-rotated JPEG.
+  // Try the nice path: HEIC -> JPEG (if needed), then normalize to a right-sized,
+  // EXIF-rotated JPEG.
   try {
     const filename = `${id}.jpg`;
-    let outBuf = req.file.buffer;
+
+    // Decode HEIC to a JPEG buffer first (heic-convert applies the HEIC's own
+    // rotation during decode). Regular JPEGs pass straight through.
+    let sourceBuf = req.file.buffer;
+    if (heicConvert && isHeic(req.file)) {
+      sourceBuf = await heicConvert({ buffer: req.file.buffer, format: 'JPEG', quality: 0.9 });
+      console.log('[upload] converted HEIC -> JPEG');
+    }
+
+    let outBuf = sourceBuf;
     if (sharp) {
-      outBuf = await sharp(req.file.buffer)
+      outBuf = await sharp(sourceBuf)
         .rotate() // honor EXIF orientation from phones
         .resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true })
         .jpeg({ quality: 82 })

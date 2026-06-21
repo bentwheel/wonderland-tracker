@@ -125,10 +125,10 @@ TRACKER_DB_PATH=/opt/wonderland-tracker/data/locations.db node migrate.js
 
 Expected: `Migration complete: schema.sql applied.`
 
-> **sharp / HEIC note:** `npm install` pulls `sharp` for HEIC→JPEG. If it fails
-> to install on this box, the API still runs — it just stores photos as-is
-> (HEIC won't display in non-Safari browsers). Note any sharp error for Cameron;
-> don't block on it.
+> **image deps note:** `npm install` pulls `sharp` (resize/rotate) and
+> `heic-convert` (HEIC→JPEG, pure JS — no system libheif needed). If either
+> fails to install, the API still runs and stores photos as-is; note the error
+> for Cameron but don't block on it.
 
 ---
 
