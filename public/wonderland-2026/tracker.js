@@ -342,14 +342,40 @@ function toHeadlineMi(gpxMi) {
   return gpxMi * (CONFIG.TRAIL_TOTAL_MI / routeTotalMi);
 }
 
-// Persist max progress so the bar never jumps backward (e.g. snapping to the
-// wrong lobe of the loop). Reset support: clear localStorage 'maxProgressMi'.
+// Persist max progress + the matching elevation gain so neither jumps backward
+// when backtracking (e.g. retrieving forgotten gear) or when a ping snaps to the
+// wrong lobe of the loop. Reset support: clear localStorage 'maxProgressMi' and
+// 'maxGainFt'.
 function readMaxProgress() {
   const v = parseFloat(localStorage.getItem('maxProgressMi'));
   return Number.isFinite(v) ? v : 0;
 }
 function writeMaxProgress(mi) {
   localStorage.setItem('maxProgressMi', String(mi));
+}
+function readMaxGain() {
+  const v = parseFloat(localStorage.getItem('maxGainFt'));
+  return Number.isFinite(v) ? v : 0;
+}
+function writeMaxGain(ft) {
+  localStorage.setItem('maxGainFt', String(ft));
+}
+
+// Furthest on-route point across a set of pings (the recent breadcrumb). Lets a
+// first-time viewer who loads mid-backtrack still see the true high-water mark,
+// not just the current (lower) position. Returns { progressMi, elevGainFt } or
+// null if no ping is on the route.
+function bestProgress(pings) {
+  let best = null;
+  for (const p of pings) {
+    if (!p || p.lat == null) continue;
+    const s = snapToRoute(p);
+    if (s.offRoute) continue;
+    if (!best || s.progressMi > best.progressMi) {
+      best = { progressMi: s.progressMi, elevGainFt: s.elevGainFt };
+    }
+  }
+  return best;
 }
 
 // ---------------------------------------------------------------------------
@@ -450,28 +476,35 @@ function updateProgressBar(snap, phase) {
     return;
   }
 
-  // maxMi / snap.progressMi are GPX miles. pct uses the GPX total (so it can
-  // reach 100%); the displayed distance is scaled to the 94.1-mi headline.
-  if (snap.offRoute) {
-    // Keep the bar at the last known max; don't advance while off route.
-    const maxMi = readMaxProgress();
-    const pct = (maxMi / routeTotalMi) * 100;
-    const displayedMi = toHeadlineMi(maxMi);
-    fill.style.width = `${pct.toFixed(1)}%`;
-    label.textContent = `Off route — ${displayedMi.toFixed(1)} of ${CONFIG.TRAIL_TOTAL_MI} mi`;
-    ffProgress.textContent = `Off route (last good: ${displayedMi.toFixed(1)} mi)`;
-    return;
+  // Distance + elevation are latched to their maximum so they never shrink — on
+  // a backtrack, an off-route excursion, or a bad snap. `snap.best` is the
+  // furthest on-route point across the recent breadcrumb; localStorage carries
+  // the high-water mark across reloads. All values are GPX miles; pct uses the
+  // GPX total (so it reaches 100%) while the displayed distance scales to 94.1.
+  let maxMi = readMaxProgress();
+  let maxGain = readMaxGain();
+  if (snap.best) {
+    maxMi = Math.max(snap.best.progressMi, maxMi);
+    maxGain = Math.max(snap.best.elevGainFt, maxGain);
+    writeMaxProgress(maxMi);
+    writeMaxGain(maxGain);
   }
 
-  const maxMi = Math.max(snap.progressMi, readMaxProgress());
-  writeMaxProgress(maxMi);
-  const pct = (maxMi / routeTotalMi) * 100;
+  const pct = Math.min(100, (maxMi / routeTotalMi) * 100);
   const displayedMi = toHeadlineMi(maxMi);
-  fill.style.width = `${Math.min(100, pct).toFixed(1)}%`;
-  label.textContent = `${displayedMi.toFixed(1)} of ${CONFIG.TRAIL_TOTAL_MI} mi (${Math.round(pct)}%)`;
-  ffProgress.textContent = `${displayedMi.toFixed(1)} of ${CONFIG.TRAIL_TOTAL_MI} mi (${Math.round(pct)}%)`;
+  const figure = `${displayedMi.toFixed(1)} of ${CONFIG.TRAIL_TOTAL_MI} mi (${Math.round(pct)}%)`;
+  fill.style.width = `${pct.toFixed(1)}%`;
+
+  // If the *current* fix is off-route, flag it but keep showing the held max.
+  if (snap.curOffRoute) {
+    label.textContent = `Off route — max ${figure}`;
+    ffProgress.textContent = `Off route (max ${displayedMi.toFixed(1)} mi)`;
+  } else {
+    label.textContent = figure;
+    ffProgress.textContent = figure;
+  }
   ffElev.textContent =
-    `${Math.round(snap.elevGainFt).toLocaleString()} ft of ${Math.round(routeTotalGainFt).toLocaleString()} ft`;
+    `${Math.round(maxGain).toLocaleString()} ft of ${Math.round(routeTotalGainFt).toLocaleString()} ft`;
 }
 
 function updateFastFacts(current, todayItin, recentLocations, phase) {
@@ -703,15 +736,24 @@ async function poll() {
       const markerStyle = phase === 'pre' ? 'test' : phase === 'post' ? 'final' : 'normal';
       renderCurrentMarker(current, markerStyle);
       if (phase === 'active') {
-        // Snap-to-route only happens during the active trip.
-        updateProgressBar(snapToRoute(current), phase);
+        // Progress = furthest on-route point across the breadcrumb + current fix
+        // (latched against backward motion in updateProgressBar). curOffRoute
+        // reflects only the latest fix, for the "off route" label.
+        const best = bestProgress([current].concat(locations));
+        const curOffRoute = snapToRoute(current).offRoute;
+        updateProgressBar({ best, curOffRoute }, phase);
       } else {
         // Pre/post: no snap at all (the geofence label is shown via status text).
         updateProgressBar(null, phase);
       }
       updateFastFacts(current, todayItin, locations, phase);
     } else {
-      updateProgressBar(phase === 'active' ? { offRoute: true } : null, phase);
+      // No current fix: hold the last known max; don't imply "off route".
+      if (phase === 'active') {
+        updateProgressBar({ best: bestProgress(locations), curOffRoute: false }, phase);
+      } else {
+        updateProgressBar(null, phase);
+      }
       updateFastFacts(null, todayItin, locations, phase);
     }
 

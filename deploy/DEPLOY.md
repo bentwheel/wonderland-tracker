@@ -308,8 +308,9 @@ Frontend updates (`public/wonderland-2026/`) land in the repo via the same
 ## Operational notes
 
 - **Restart API after a code change:** `sudo systemctl restart tracker-api.service` [CAMERON], or restart the manual instance [CICERO].
-- **Reset a stuck progress bar:** it lives in the browser's `localStorage`
-  (`maxProgressMi`) — Cameron clears it on his phone; no server action.
+- **Reset a stuck progress bar:** the latched maximum lives in the browser's
+  `localStorage` (`maxProgressMi` and `maxGainFt`) — Cameron clears those keys on
+  his phone; no server action.
 - **Backups:** photos + DB live under `/opt/wonderland-tracker/data/` (gitignored).
 
 ## Requires Cameron's judgment — NOT for Cicero
