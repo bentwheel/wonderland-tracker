@@ -27,7 +27,10 @@ CREATE TABLE IF NOT EXISTS photos (
 );
 
 CREATE INDEX IF NOT EXISTS idx_photos_uploaded ON photos(uploaded_at DESC);
-CREATE INDEX IF NOT EXISTS idx_photos_captured ON photos(captured_at DESC);
+-- NOTE: the index on captured_at is created in db.js AFTER the column-migration
+-- step, not here. On a v1 upgrade the photos table predates captured_at, and
+-- CREATE INDEX on a missing column would abort this whole script before the
+-- ALTER TABLE that adds the column can run.
 
 -- Single-row table the poller stamps after each run so the API can report
 -- feed_healthy (false when no successful fetch in >30 min).

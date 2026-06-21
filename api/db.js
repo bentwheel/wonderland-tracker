@@ -37,4 +37,9 @@ function addColumnIfMissing(table, column, definition) {
 }
 addColumnIfMissing('photos', 'captured_at', 'TEXT');
 
+// Index on captured_at lives here (not in schema.sql) so it runs AFTER the
+// column is guaranteed to exist — including on a v1 upgrade where the column
+// was just added by the migration above.
+db.exec('CREATE INDEX IF NOT EXISTS idx_photos_captured ON photos(captured_at DESC)');
+
 module.exports = db;
