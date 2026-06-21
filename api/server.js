@@ -40,7 +40,8 @@ try {
   );
 }
 
-const PORT = parseInt(process.env.PORT, 10) || 8787;
+// 8788, not 8787 — 8787 is already taken on wavebeam (RStudio Server).
+const PORT = parseInt(process.env.PORT, 10) || 8788;
 const ADMIN_TOKEN = process.env.ADMIN_UPLOAD_TOKEN || '';
 const PHOTO_DIR =
   process.env.PHOTO_DIR || path.join(__dirname, '..', 'data', 'photos');

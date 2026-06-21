@@ -3,7 +3,8 @@
 This deployment is split between two actors because **Cicero has no sudo/root**:
 
 - **Cameron (root):** a few one-time host-prep steps that require root — creating
-  & owning the app directory, installing the systemd unit, and the nginx config.
+  & owning the app directory, installing the systemd unit, and symlinking the web
+  root. (nginx is already configured on wavebeam — see the resolved note below.)
 - **Cicero (unprivileged):** everything else — copying files, Python venv, npm
   install, DB migration, the `.env` secret, the user-crontab poller, and all
   verification. None of Cicero's steps use `sudo`.
@@ -21,7 +22,7 @@ Target layout on **wavebeam**:
 ├── api/      (server.js, db.js, migrate.js, schema.sql, package.json, .env)
 ├── data/     (locations.db, photos/, poller.log)   — runtime, gitignored
 └── deploy/   (this file + unit/cron/nginx artifacts)
-public/wonderland-2026/  → served by the cslester.com static pipeline (Cameron)
+public/wonderland-2026/  → symlinked into the cslester.com web root (Step 9)
 ```
 
 ---
@@ -90,7 +91,6 @@ created in later steps.
 
 > Updating later is just `git -C /opt/wonderland-tracker pull` — see
 > "Updating the deployment" near the end of this file.
-```
 
 ---
 
@@ -138,7 +138,7 @@ Expected: `Migration complete: schema.sql applied.`
 TOKEN=$(openssl rand -hex 24)
 tee /opt/wonderland-tracker/api/.env >/dev/null <<EOF
 ADMIN_UPLOAD_TOKEN=$TOKEN
-PORT=8787
+PORT=8788
 TRACKER_DB_PATH=/opt/wonderland-tracker/data/locations.db
 PHOTO_DIR=/opt/wonderland-tracker/data/photos
 CORS_ORIGIN=https://cslester.com
@@ -177,7 +177,7 @@ echo "started api pid $!"
 sleep 2
 cd /opt/wonderland-tracker/deploy
 chmod +x verify.sh
-./verify.sh                       # checks 127.0.0.1:8787
+./verify.sh                       # checks 127.0.0.1:8788
 ```
 
 Report the full `verify.sh` output to Cameron. Then **stop this manual instance**
@@ -204,29 +204,36 @@ sudo cp /opt/wonderland-tracker/deploy/tracker-api.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now tracker-api.service
 sudo systemctl status tracker-api.service --no-pager
-curl -fsS http://127.0.0.1:8787/api/health    # -> {"ok":true}
+curl -fsS http://127.0.0.1:8788/api/health    # -> {"ok":true}
 ```
 
-### 8b. nginx (only if cslester.com is on this box — see Open Question 1)
+### 8b. nginx — already configured on wavebeam
 
-Merge the three `location` blocks from
-`/opt/wonderland-tracker/deploy/nginx-snippet.conf` into the existing cslester.com
-`server { }` block, then:
-
-```bash
-sudo nginx -t && sudo systemctl reload nginx
-```
-
-If cslester.com is hosted elsewhere, skip this and set `API_BASE` in the
-frontend instead (Open Question 1).
+cslester.com's nginx already proxies `/api/`, `/admin/upload`, and `/photos/` to
+`127.0.0.1:8788`. **No nginx change is needed on the existing host.** (Just
+confirm the API is answering on 8788 via the curl above.) The
+`nginx-snippet.conf` in this repo is reference-only — see the note at its top.
 
 ---
 
-## Step 9 — [CAMERON] Publish the frontend
+## Step 9 — [CAMERON-ROOT] Publish the frontend (symlink the web root)
 
-Deploy `public/wonderland-2026/` (`index.html`, `tracker.js`, `tracker.css`,
-`trail.gpx`, `admin/index.html`) through the existing cslester.com pipeline so the
-page is live at `https://cslester.com/wonderland-2026`.
+cslester.com is served from this box, with its document root holding a
+`wonderland-2026/` directory. Point that directory at the repo's copy so future
+`git pull`s update the live site with no copy step. Back up the existing v1
+directory first:
+
+```bash
+# WEBROOT = cslester.com document root (e.g. the path holding index.html).
+WEBROOT=<cslester.com document root>
+sudo mv "$WEBROOT/wonderland-2026" "$WEBROOT/wonderland-2026.v1.bak"   # keep a backup
+sudo ln -s /opt/wonderland-tracker/public/wonderland-2026 "$WEBROOT/wonderland-2026"
+# Ensure nginx (www-data) can traverse/read the repo's public files:
+chmod -R o+rX /opt/wonderland-tracker/public
+```
+
+Verify in a browser at `https://cslester.com/wonderland-2026`. Asset links carry
+a `?v=` query string for cache-busting; bump it on a breaking change.
 
 > `trail.gpx` is a STUB (camps connected by straight lines). The progress bar
 > stays disabled until you replace it with a real Gaia export at the same path.
@@ -240,7 +247,7 @@ public origin, and report all output:
 
 ```bash
 cd /opt/wonderland-tracker/deploy
-BASE=http://127.0.0.1:8787 ./verify.sh         # via systemd service
+BASE=http://127.0.0.1:8788 ./verify.sh         # via systemd service
 BASE=https://cslester.com   ./verify.sh         # via nginx (only if Step 8b done)
 ```
 
@@ -281,7 +288,7 @@ node migrate.js        # applies any new schema columns (idempotent)
 ```bash
 # [CAMERON-ROOT] Restart the service to pick up the new API code:
 sudo systemctl restart tracker-api.service
-curl -fsS http://127.0.0.1:8787/api/health
+curl -fsS http://127.0.0.1:8788/api/health
 ```
 
 Frontend updates (`public/wonderland-2026/`) land in the repo via the same

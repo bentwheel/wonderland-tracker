@@ -10,7 +10,7 @@ Type=simple
 User=__SERVICE_USER__
 WorkingDirectory=/opt/wonderland-tracker/api
 Environment=NODE_ENV=production
-Environment=PORT=8787
+Environment=PORT=8788
 Environment=TRACKER_DB_PATH=/opt/wonderland-tracker/data/locations.db
 Environment=PHOTO_DIR=/opt/wonderland-tracker/data/photos
 Environment=CORS_ORIGIN=https://cslester.com

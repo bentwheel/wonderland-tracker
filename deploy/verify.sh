@@ -8,7 +8,7 @@
 #   BASE=https://cslester.com ./verify.sh   # checks through nginx/public
 
 set -u
-BASE="${BASE:-http://127.0.0.1:8787}"
+BASE="${BASE:-http://127.0.0.1:8788}"
 fail=0
 
 echo "== Wonderland tracker verification =="

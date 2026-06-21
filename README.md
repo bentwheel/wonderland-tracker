@@ -33,7 +33,7 @@ inReach Messenger Plus ─► Garmin satellites ─► MapShare KML feed (public
 | `public/wonderland-2026/index.html` | The tracker page. |
 | `public/wonderland-2026/tracker.js` | Map, polling, snap-to-route, progress, photos, failure UI. |
 | `public/wonderland-2026/tracker.css` | Styles (incl. pulsing marker). |
-| `public/wonderland-2026/trail.gpx` | **STUB** — replace with a real Gaia export. |
+| `public/wonderland-2026/trail.gpx` | Real Gaia export (~6,200 route points). Falls back to a camp-stub if absent. |
 | `public/wonderland-2026/admin/index.html` | Ugly-but-functional phone upload form. |
 | `deploy/` | systemd unit, cron, nginx snippet, `verify.sh`, `DEPLOY.md`. |
 | `data/` | Runtime DB + photos (gitignored). |
@@ -56,7 +56,7 @@ cd api
 npm install
 node migrate.js
 ADMIN_UPLOAD_TOKEN=dev-token CORS_ORIGIN=http://localhost:8080 node server.js
-# -> tracker-api listening on :8787
+# -> tracker-api listening on :8788
 
 # Poller (one shot; hits the live MapShare feed)
 cd ../poller
@@ -66,7 +66,7 @@ TRACKER_DB_PATH=../data/locations.db ./venv/bin/python poll_mapshare.py
 # Frontend: serve public/ statically, e.g.
 cd ../public && python3 -m http.server 8080
 # then open http://localhost:8080/wonderland-2026/
-# (set CONFIG.API_BASE = 'http://localhost:8787' in tracker.js for cross-origin local dev)
+# (set CONFIG.API_BASE = 'http://localhost:8788' in tracker.js for cross-origin local dev)
 ```
 
 ## Deployment
@@ -82,9 +82,11 @@ Server deployment is performed by Cicero on wavebeam following
   the DB. (Brief design principle #4.)
 - **Feed health:** the poller stamps a `poll_status` row on every run; the API
   reports `feed_healthy=false` if there's been no successful poll in >30 min.
-- **Progress / snap-to-route** runs in the browser on each poll. It needs a real
-  GPX. Until one is provided, `trail.gpx` is a stub and the frontend detects it
-  (too few points) and shows "Awaiting trail data" instead of fake progress.
+- **Progress / snap-to-route** runs in the browser on each poll against the real
+  GPX. The Gaia route measures ~85.7 mi (smoothed centerline), so the frontend
+  uses that as the percentage denominator (bar completes at the finish) while
+  scaling the *displayed* mileage to the 94.1-mi headline. If `trail.gpx` is
+  missing it falls back to a camp-stub and shows "Awaiting trail data".
 - **Max-progress latch:** progress is kept in `localStorage` (`maxProgressMi`) so
   the bar never jumps backward when a ping snaps to the wrong lobe of the loop.
 - **API base URL:** `CONFIG.API_BASE` is `''` (same-origin) by default, assuming
@@ -93,7 +95,7 @@ Server deployment is performed by Cicero on wavebeam following
 
 ## Known limitations / open items
 
-- `trail.gpx` is a stub (see above).
+- API listens on **8788** (8787 is taken by RStudio Server on wavebeam).
 - HEIC conversion depends on `sharp` building with libheif on wavebeam; the API
   falls back to storing raw bytes if it can't convert.
 - "Approximate location" is derived from the nearest camp, not named trail
