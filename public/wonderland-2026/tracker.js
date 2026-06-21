@@ -233,8 +233,15 @@ async function loadTrail() {
 
   if (routePoints.length >= 2) {
     const latlngs = routePoints.map((p) => [p.lat, p.lon]);
-    L.polyline(latlngs, { color: CONFIG.TRIP_COLOR || '#2874a6', weight: 3, opacity: 0.9 })
-      .addTo(map);
+    const line = L.polyline(latlngs, {
+      color: CONFIG.TRIP_COLOR || '#2874a6',
+      weight: 3,
+      opacity: 0.9,
+    }).addTo(map);
+    // Center/zoom on whatever route is actually loaded — overrides the default
+    // Rainier view, so dropping in the St Helens test GPX (or any GPX) frames
+    // itself correctly instead of sitting off-screen.
+    map.fitBounds(line.getBounds(), { padding: [20, 20] });
   }
   if (routeIsStub) {
     console.info('Trail is a STUB (camps connected linearly). Progress disabled until a real Gaia GPX is dropped in.');
