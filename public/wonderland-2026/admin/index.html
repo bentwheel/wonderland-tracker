@@ -71,7 +71,13 @@
           });
           const data = await resp.json().catch(() => ({}));
           if (resp.ok) {
-            log(`  OK -> ${data.url}` + (data.warning ? ` (${data.warning})` : ''), 'ok');
+            // Report where the photo was placed: exact EXIF GPS, matched to your
+            // breadcrumb by capture time, or no location at all.
+            let where;
+            if (data.gps_source === 'exif') where = `pinned by photo GPS (${data.associated_lat?.toFixed(4)}, ${data.associated_lon?.toFixed(4)})`;
+            else if (data.gps_source === 'time-match') where = `pinned by capture time (${data.associated_lat?.toFixed(4)}, ${data.associated_lon?.toFixed(4)})`;
+            else where = 'NO LOCATION (no photo GPS, no ping near that time)';
+            log(`  OK -> ${data.url}\n     ${where}` + (data.warning ? `\n     ${data.warning}` : ''), 'ok');
           } else {
             log(`  FAILED (${resp.status}): ${data.error || 'unknown error'}`, 'err');
           }

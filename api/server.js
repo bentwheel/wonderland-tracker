@@ -75,6 +75,9 @@ const qStatus = db.prepare('SELECT last_success_utc FROM poll_status WHERE id = 
 const qRecent = db.prepare(
   'SELECT timestamp, lat, lon, elevation_m FROM locations WHERE timestamp >= ? ORDER BY timestamp ASC'
 );
+// All pings (the trip is ~20–80 rows total) — used to place a photo at the ping
+// closest in time to when it was taken.
+const qAllLocs = db.prepare('SELECT lat, lon, timestamp FROM locations');
 // Sort by captured_at (when the photo was taken). COALESCE handles older rows
 // that predate the captured_at column (fall back to upload time).
 const qPhotos = db.prepare(
@@ -102,6 +105,14 @@ const ROUTE_ANCHORS = [
   [46.86617, -121.65843], [46.77204, -121.62402],
 ];
 const GEO_NEAR_ROUTE_MI = 50;
+
+// A photo is placed at the ping closest in time to when it was taken, as long as
+// that ping is within this many hours of the photo's capture time. Pings arrive
+// continuously over satellite, so by upload time the capture-time position is
+// usually already recorded. Beyond this window (e.g. last year's photos, or a
+// long satellite gap) we don't guess a location. Override via env.
+const PHOTO_TIME_MATCH_MS =
+  (parseFloat(process.env.PHOTO_TIME_MATCH_HOURS) || 6) * 3600 * 1000;
 
 // --- Helpers -----------------------------------------------------------------
 function isFeedHealthy(lastSuccessUtc) {
@@ -157,6 +168,24 @@ async function readExif(buffer) {
     console.warn('[upload] EXIF gps parse failed:', e.message);
   }
   return { capturedAt, gps };
+}
+
+// Find the location ping closest in time to `iso`, but only if it's within
+// PHOTO_TIME_MATCH_MS. Returns { lat, lon } or null. With ≤ ~80 rows a linear
+// scan in JS is trivial and sidesteps any SQLite date-format quirks.
+function nearestPingByTime(iso) {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  let best = null;
+  let bestDiff = Infinity;
+  for (const r of qAllLocs.all()) {
+    const diff = Math.abs(Date.parse(r.timestamp) - t);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = r;
+    }
+  }
+  return best && bestDiff <= PHOTO_TIME_MATCH_MS ? { lat: best.lat, lon: best.lon } : null;
 }
 
 // --- Routes ------------------------------------------------------------------
@@ -253,19 +282,29 @@ app.post('/admin/upload', requireAdmin, upload.single('photo'), async (req, res)
   // captured_at: EXIF capture time, else fall back to upload time.
   const capturedAtValue = capturedAt || toIso(Date.now());
 
-  // associated coords: prefer EXIF GPS if it's plausibly on the route (within
-  // 50 mi of an itinerary anchor); otherwise snap to the most recent ping.
-  const recent = qLatest.get();
-  let assocLat = recent ? recent.lat : null;
-  let assocLon = recent ? recent.lon : null;
+  // Place the photo where it was TAKEN, not where it was uploaded:
+  //   1. EXIF GPS, if present and plausibly on the route (exact).
+  //   2. else the ping closest in time to capture (within PHOTO_TIME_MATCH_MS).
+  //   3. else no location (better than pinning it to wherever you had signal).
+  let assocLat = null;
+  let assocLon = null;
+  let gpsSource = 'none';
   if (gps && nearRoute(gps.lat, gps.lon)) {
     assocLat = gps.lat;
     assocLon = gps.lon;
-  } else if (gps) {
-    console.warn(
-      `[upload] EXIF GPS ${gps.lat},${gps.lon} is >50 mi from route — using last ping instead`
-    );
+    gpsSource = 'exif';
+  } else {
+    if (gps) {
+      console.warn(`[upload] EXIF GPS ${gps.lat},${gps.lon} is >50 mi from route — ignoring`);
+    }
+    const match = nearestPingByTime(capturedAtValue);
+    if (match) {
+      assocLat = match.lat;
+      assocLon = match.lon;
+      gpsSource = 'time-match';
+    }
   }
+  console.log(`[upload] captured_at=${capturedAtValue} placement=${gpsSource}`);
 
   // Try the nice path: normalize to a right-sized, EXIF-rotated JPEG.
   try {
@@ -289,7 +328,13 @@ app.post('/admin/upload', requireAdmin, upload.single('photo'), async (req, res)
       assocLon,
       outBuf.length
     );
-    return res.json({ id: info.lastInsertRowid, url: `/photos/${filename}` });
+    return res.json({
+      id: info.lastInsertRowid,
+      url: `/photos/${filename}`,
+      gps_source: gpsSource,
+      associated_lat: assocLat,
+      associated_lon: assocLon,
+    });
   } catch (err) {
     // Most likely sharp couldn't decode a HEIC on this box (no libheif).
     // Fall back to storing the original bytes so the upload still succeeds.
@@ -310,6 +355,9 @@ app.post('/admin/upload', requireAdmin, upload.single('photo'), async (req, res)
       return res.json({
         id: info.lastInsertRowid,
         url: `/photos/${filename}`,
+        gps_source: gpsSource,
+        associated_lat: assocLat,
+        associated_lon: assocLon,
         warning: 'stored without conversion (HEIC may not display in non-Safari browsers)',
       });
     } catch (err2) {
