@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wonderland Trail 2026 — Live Tracker</title>
+  <meta name="description" content="Live location tracker for Cameron's Wonderland Trail thru-hike, June 27 – July 5, 2026.">
+
+  <!-- Leaflet (pinned version per brief) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <link rel="stylesheet" href="tracker.css">
+</head>
+<body>
+  <header class="site-header">
+    <h1>Wonderland Trail 2026</h1>
+    <p class="subtitle">Cameron's thru-hike · June 27 – July 5, 2026 · Mount Rainier</p>
+  </header>
+
+  <!-- Banner slot for stale-data / gap warnings (hidden until needed) -->
+  <div id="banner" class="banner" hidden></div>
+
+  <div id="map" role="application" aria-label="Map of the Wonderland Trail"></div>
+
+  <main class="panel">
+    <!-- Day / date line -->
+    <div id="day-line" class="day-line">Loading…</div>
+
+    <!-- Last ping + approximate location -->
+    <div id="ping-line" class="ping-line"></div>
+    <div id="approx-line" class="approx-line"></div>
+
+    <!-- Progress bar -->
+    <div class="progress-wrap" aria-label="Trail progress">
+      <div class="progress-track">
+        <div id="progress-fill" class="progress-fill" style="width:0%"></div>
+      </div>
+      <div id="progress-label" class="progress-label">— of 94.1 mi</div>
+    </div>
+
+    <!-- Fast facts -->
+    <dl id="fast-facts" class="fast-facts">
+      <div><dt>Progress</dt><dd id="ff-progress">—</dd></div>
+      <div><dt>Elevation gained</dt><dd id="ff-elev">—</dd></div>
+      <div><dt>Tonight's camp</dt><dd id="ff-camp">—</dd></div>
+      <div><dt>Highest point today</dt><dd id="ff-high">—</dd></div>
+    </dl>
+  </main>
+
+  <!-- Photo strip (hidden entirely when there are no photos) -->
+  <section id="photo-section" class="photo-section" hidden>
+    <h2>Photos from the trail</h2>
+    <div id="photo-strip" class="photo-strip"></div>
+  </section>
+
+  <footer class="site-footer">
+    <p id="footer-status"></p>
+    <p class="footer-meta">
+      Basemap: USGS National Map · <a href="admin/">upload</a>
+    </p>
+  </footer>
+
+  <!-- Fullscreen photo viewer -->
+  <div id="lightbox" class="lightbox" hidden>
+    <img id="lightbox-img" alt="">
+    <div id="lightbox-caption" class="lightbox-caption"></div>
+  </div>
+
+  <script src="tracker.js"></script>
+</body>
+</html>

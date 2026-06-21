@@ -1,0 +1,225 @@
+/* Wonderland Trail tracker — styles.
+   Priority is "working before pretty" (see brief). Clean and legible on a phone. */
+
+:root {
+  --trip-color: #2874a6;
+  --bg: #f7f7f5;
+  --panel-bg: #ffffff;
+  --text: #1c1c1c;
+  --muted: #6b7280;
+  --warn-bg: #fdf3d0;
+  --warn-border: #e3c34a;
+  --danger-bg: #f8d7da;
+  --danger-border: #d9534f;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  line-height: 1.45;
+}
+
+.site-header {
+  padding: 14px 16px 8px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+.site-header h1 { margin: 0; font-size: 1.4rem; }
+.subtitle { margin: 2px 0 0; color: var(--muted); font-size: 0.9rem; }
+
+/* Banner (stale-data warnings) */
+.banner {
+  max-width: 900px;
+  margin: 8px auto;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.banner.warn   { background: var(--warn-bg);   border: 1px solid var(--warn-border); }
+.banner.danger { background: var(--danger-bg); border: 1px solid var(--danger-border); color: #842029; }
+
+#map {
+  height: 65vh;
+  min-height: 360px;
+  max-width: 900px;
+  margin: 8px auto;
+  border: 1px solid #ddd;
+}
+
+.panel {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 14px 16px;
+  background: var(--panel-bg);
+  border: 1px solid #e5e5e5;
+}
+
+.day-line { font-size: 1.1rem; font-weight: 700; }
+.ping-line { margin-top: 6px; font-size: 0.95rem; }
+.ping-line.stale { color: var(--muted); }
+.approx-line { color: var(--muted); font-size: 0.9rem; }
+
+/* Progress bar */
+.progress-wrap { margin: 14px 0 6px; }
+.progress-track {
+  height: 16px;
+  background: #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--trip-color);
+  width: 0;
+  transition: width 0.6s ease;
+}
+.progress-label { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
+
+/* Fast facts */
+.fast-facts {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  margin: 12px 0 0;
+}
+.fast-facts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-top: 1px solid #eee;
+}
+.fast-facts dt { color: var(--muted); text-transform: uppercase; font-size: 0.72rem; letter-spacing: 0.04em; margin: 0; }
+.fast-facts dd { margin: 0; font-weight: 600; text-align: right; }
+
+/* Photo strip */
+.photo-section { max-width: 900px; margin: 12px auto; padding: 0 16px; }
+.photo-section h2 { font-size: 1rem; margin: 0 0 8px; }
+.photo-strip {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  -webkit-overflow-scrolling: touch;
+}
+.photo-thumb {
+  flex: 0 0 auto;
+  width: 150px;
+  cursor: pointer;
+}
+.photo-thumb img {
+  width: 150px;
+  height: 110px;
+  object-fit: cover;
+  border-radius: 6px;
+  display: block;
+  background: #ddd;
+}
+.photo-thumb .cap { font-size: 0.78rem; margin-top: 4px; line-height: 1.3; }
+.photo-thumb .when { font-size: 0.7rem; color: var(--muted); }
+
+/* Footer */
+.site-footer { max-width: 900px; margin: 16px auto 40px; padding: 0 16px; color: var(--muted); font-size: 0.85rem; }
+.site-footer a { color: var(--trip-color); }
+#footer-status:empty { display: none; }
+
+/* Current-position marker: pulsing red dot (divIcon) */
+.pulse-marker {
+  width: 18px;
+  height: 18px;
+  background: #e53935;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 rgba(229, 57, 53, 0.6);
+  animation: pulse 1.8s infinite;
+}
+@keyframes pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(229, 57, 53, 0.55); }
+  70%  { box-shadow: 0 0 0 16px rgba(229, 57, 53, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(229, 57, 53, 0); }
+}
+
+/* Pre-trip "test ping" marker: static blue dot, visually distinct from the
+   live red pulse so a test ping is never mistaken for a real trip fix. */
+.test-marker {
+  width: 16px;
+  height: 16px;
+  background: #2874a6;
+  border: 2px dashed #fff;
+  border-radius: 50%;
+  opacity: 0.9;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+}
+
+/* Post-trip "final position" marker: static, frozen at the last ping. */
+.final-marker {
+  width: 18px;
+  height: 18px;
+  background: #111;
+  border: 3px solid #e53935;
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+
+/* Photo location markers (camera icon, tap to open the lightbox) */
+.photo-marker {
+  width: 24px;
+  height: 24px;
+  line-height: 24px;
+  text-align: center;
+  font-size: 15px;
+  background: #fff;
+  border: 2px solid #2874a6;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  cursor: pointer;
+}
+
+/* Start/finish flag at the Longmire trailhead */
+.trailhead-marker {
+  width: 26px;
+  height: 26px;
+  line-height: 26px;
+  text-align: center;
+  font-size: 19px;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6));
+}
+
+/* Camp number markers */
+.camp-marker {
+  width: 22px;
+  height: 22px;
+  background: var(--trip-color);
+  color: #fff;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+}
+
+/* Lightbox */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.9);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 20px;
+}
+/* The `hidden` HTML attribute must win over the .lightbox display rule above —
+   a class selector outranks the UA `[hidden]` rule, so without this the black
+   overlay is always shown and dims the whole page. */
+.lightbox[hidden] { display: none; }
+.lightbox img { max-width: 100%; max-height: 85vh; object-fit: contain; }
+.lightbox-caption { color: #fff; margin-top: 10px; text-align: center; font-size: 0.9rem; }

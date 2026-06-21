@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Upload — Wonderland 2026</title>
+  <style>
+    /* Deliberately ugly and functional. Works one-handed on a phone over LTE. */
+    body { font-family: system-ui, sans-serif; margin: 16px; max-width: 560px; }
+    label { display: block; margin: 14px 0 4px; font-weight: 600; }
+    input[type=text], input[type=password], input[type=file] { width: 100%; padding: 10px; font-size: 16px; }
+    button { margin-top: 18px; padding: 14px 20px; font-size: 16px; width: 100%; }
+    #log { margin-top: 18px; white-space: pre-wrap; font-family: monospace; font-size: 13px; }
+    .ok { color: #1a7f37; }
+    .err { color: #b3261e; }
+  </style>
+</head>
+<body>
+  <h1>Upload trail photos</h1>
+  <p>Paste the upload token, pick one or more photos, add an optional caption, submit.</p>
+
+  <label for="token">Upload token</label>
+  <input type="password" id="token" autocomplete="off" placeholder="secret token">
+
+  <label for="photos">Photo(s)</label>
+  <input type="file" id="photos" accept="image/*,.heic,.heif" multiple>
+
+  <label for="caption">Caption (optional — applied to all selected photos)</label>
+  <input type="text" id="caption" placeholder="e.g. Klapatche Park, sunset on St. Andrews Lake">
+
+  <button id="submit">Upload</button>
+
+  <div id="log"></div>
+
+  <script>
+    // If the API is served under the same origin (via the nginx proxy), leave
+    // API_BASE empty. Otherwise set it to the API origin, e.g.
+    // 'https://wavebeam.example.net'. Must match tracker.js CONFIG.API_BASE.
+    const API_BASE = '';
+
+    const logEl = document.getElementById('log');
+    function log(msg, cls) {
+      const line = document.createElement('div');
+      if (cls) line.className = cls;
+      line.textContent = msg;
+      logEl.appendChild(line);
+    }
+
+    document.getElementById('submit').addEventListener('click', async () => {
+      const token = document.getElementById('token').value.trim();
+      const files = document.getElementById('photos').files;
+      const caption = document.getElementById('caption').value;
+
+      if (!token) { log('Missing token.', 'err'); return; }
+      if (!files.length) { log('No files selected.', 'err'); return; }
+
+      logEl.innerHTML = '';
+      // Upload one file at a time — the endpoint takes a single "photo" field,
+      // and sequential keeps it simple/reliable on a flaky LTE connection.
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const fd = new FormData();
+        fd.append('photo', file);
+        if (caption) fd.append('caption', caption);
+        log(`Uploading ${file.name} (${Math.round(file.size / 1024)} KB)…`);
+        try {
+          const resp = await fetch(API_BASE + '/admin/upload', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token },
+            body: fd,
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (resp.ok) {
+            log(`  OK -> ${data.url}` + (data.warning ? ` (${data.warning})` : ''), 'ok');
+          } else {
+            log(`  FAILED (${resp.status}): ${data.error || 'unknown error'}`, 'err');
+          }
+        } catch (e) {
+          log(`  FAILED: ${e.message}`, 'err');
+        }
+      }
+      log('Done.');
+    });
+  </script>
+</body>
+</html>

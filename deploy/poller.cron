@@ -1,0 +1,15 @@
+# Wonderland Trail MapShare poller — runs every 15 minutes.
+#
+# Installed into Cicero's OWN user crontab — NO root required, NO username field.
+# (This replaces the old /etc/cron.d approach, which needed root.)
+#
+# Install it without an editor (idempotent — removes any prior copy first):
+#   ( crontab -l 2>/dev/null | grep -v 'poll_mapshare.py' ; \
+#     grep -v '^#' /opt/wonderland-tracker/deploy/poller.cron ) | crontab -
+#
+# Or run `crontab -e` and paste just the schedule line below.
+#
+# Logs append to a Cicero-owned path (no root needed). Trim it occasionally or
+# add a cron line to truncate; it's tiny for a 9-day trip.
+
+*/15 * * * * TRACKER_DB_PATH=/opt/wonderland-tracker/data/locations.db /opt/wonderland-tracker/poller/venv/bin/python /opt/wonderland-tracker/poller/poll_mapshare.py >> /opt/wonderland-tracker/data/poller.log 2>&1

@@ -1,0 +1,20 @@
+# Runtime data — never commit pings, photos, or the SQLite DB.
+data/locations.db
+data/locations.db-wal
+data/locations.db-shm
+data/photos/*
+!data/photos/.gitkeep
+
+# Secrets
+api/.env
+
+# Node
+api/node_modules/
+
+# Python
+poller/venv/
+poller/__pycache__/
+*.pyc
+
+# macOS
+.DS_Store

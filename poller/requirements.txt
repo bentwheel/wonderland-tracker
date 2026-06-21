@@ -1,0 +1,3 @@
+# Wonderland Trail poller dependencies.
+# Standard library covers everything else (sqlite3, xml.etree, datetime).
+requests>=2.31,<3

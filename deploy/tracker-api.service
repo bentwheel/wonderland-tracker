@@ -1,0 +1,27 @@
+[Unit]
+Description=Wonderland Trail tracker API
+After=network.target
+
+[Service]
+Type=simple
+# Run as the user Cicero runs as (so it can read the Cicero-owned app/data dirs
+# and .env). Cameron: replace __SERVICE_USER__ with that username before install
+# — Cicero will have reported it via `id -un` in DEPLOY.md Phase 0.
+User=__SERVICE_USER__
+WorkingDirectory=/opt/wonderland-tracker/api
+Environment=NODE_ENV=production
+Environment=PORT=8787
+Environment=TRACKER_DB_PATH=/opt/wonderland-tracker/data/locations.db
+Environment=PHOTO_DIR=/opt/wonderland-tracker/data/photos
+Environment=CORS_ORIGIN=https://cslester.com
+# ADMIN_UPLOAD_TOKEN lives in the EnvironmentFile (not committed). Cicero creates
+# it in Phase 2; it's owned by the service user and chmod 600.
+EnvironmentFile=/opt/wonderland-tracker/api/.env
+# Cameron: confirm the node path with `which node` (may be /usr/bin/node, or an
+# nvm path like /home/<user>/.nvm/versions/node/vX/bin/node). Set it here.
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
