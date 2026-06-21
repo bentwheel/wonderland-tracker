@@ -167,6 +167,13 @@ let photoMarkersLayer = L.layerGroup().addTo(map);
 let currentMarker = null;
 let routePoints = []; // [{ lat, lon, elev, cumDistMi, cumGainFt }]
 let routeIsStub = true;
+// Measured length/gain of the loaded GPX. The Gaia route is a smoothed centerline
+// that measures shorter than the official 94.1 mi, so we use these GPX-measured
+// totals as the true denominators (the bar reaches 100% at the finish) and scale
+// the *displayed* mileage back up to the 94.1 headline. Default to the nominal
+// figures until a real GPX loads.
+let routeTotalMi = CONFIG.TRAIL_TOTAL_MI;
+let routeTotalGainFt = CONFIG.TRAIL_TOTAL_GAIN_FT;
 
 // Camp markers from the itinerary (skip day 9 — it's the Longmire exit, same as
 // the trailhead; drawing it as a "camp" would be misleading). 8 numbered camps.
@@ -214,6 +221,15 @@ async function loadTrail() {
   }
 
   routeIsStub = routePoints.length < CONFIG.MIN_REAL_ROUTE_POINTS;
+
+  // Use the GPX's own measured totals as denominators (so the bar completes).
+  if (!routeIsStub) {
+    const last = routePoints[routePoints.length - 1];
+    if (last && last.cumDistMi > 0) {
+      routeTotalMi = last.cumDistMi;
+      routeTotalGainFt = last.cumGainFt;
+    }
+  }
 
   if (routePoints.length >= 2) {
     const latlngs = routePoints.map((p) => [p.lat, p.lon]);
@@ -319,14 +335,11 @@ function minDistToRoute(ping) {
   return min;
 }
 
-// Trail totals for the post-trip summary. Distance is always the canonical
-// 94.1 mi; gain comes from the real GPX if loaded, else the planned figure.
-function routeTotals() {
-  if (routeIsStub || !routePoints.length) {
-    return { distMi: CONFIG.TRAIL_TOTAL_MI, gainFt: CONFIG.TRAIL_TOTAL_GAIN_FT };
-  }
-  const last = routePoints[routePoints.length - 1];
-  return { distMi: CONFIG.TRAIL_TOTAL_MI, gainFt: Math.round(last.cumGainFt) };
+// Scale a GPX-measured distance up to the canonical 94.1-mi headline, so the
+// displayed mileage reads in "official" miles while the percentage (computed
+// against routeTotalMi elsewhere) still completes at the finish.
+function toHeadlineMi(gpxMi) {
+  return gpxMi * (CONFIG.TRAIL_TOTAL_MI / routeTotalMi);
 }
 
 // Persist max progress so the bar never jumps backward (e.g. snapping to the
@@ -413,18 +426,18 @@ function updateProgressBar(snap, phase) {
     return;
   }
 
-  // Post-trip: completed summary with totals. Use the achieved max distance if
-  // we have real data, otherwise the planned total.
+  // Post-trip: completed summary. achievedGpxMi is in GPX miles; if we have real
+  // tracked progress use it, otherwise assume the full route was completed.
   if (phase === 'post') {
-    const totals = routeTotals();
-    const achievedMi =
-      !routeIsStub && readMaxProgress() > 0 ? readMaxProgress() : CONFIG.TRAIL_TOTAL_MI;
-    const pct = Math.min(100, (achievedMi / CONFIG.TRAIL_TOTAL_MI) * 100);
+    const achievedGpxMi =
+      !routeIsStub && readMaxProgress() > 0 ? readMaxProgress() : routeTotalMi;
+    const pct = Math.min(100, (achievedGpxMi / routeTotalMi) * 100);
+    const displayedMi = toHeadlineMi(achievedGpxMi);
     fill.style.width = `${pct.toFixed(0)}%`;
-    label.textContent = `Trip complete — ${achievedMi.toFixed(1)} of ${CONFIG.TRAIL_TOTAL_MI} mi`;
+    label.textContent = `Trip complete — ${displayedMi.toFixed(1)} of ${CONFIG.TRAIL_TOTAL_MI} mi`;
     ffProgress.textContent =
-      `${achievedMi.toFixed(1)} of ${CONFIG.TRAIL_TOTAL_MI} mi (${Math.round(pct)}%)`;
-    ffElev.textContent = `${totals.gainFt.toLocaleString()} ft`;
+      `${displayedMi.toFixed(1)} of ${CONFIG.TRAIL_TOTAL_MI} mi (${Math.round(pct)}%)`;
+    ffElev.textContent = `${Math.round(routeTotalGainFt).toLocaleString()} ft`;
     return;
   }
 
@@ -437,24 +450,28 @@ function updateProgressBar(snap, phase) {
     return;
   }
 
+  // maxMi / snap.progressMi are GPX miles. pct uses the GPX total (so it can
+  // reach 100%); the displayed distance is scaled to the 94.1-mi headline.
   if (snap.offRoute) {
     // Keep the bar at the last known max; don't advance while off route.
     const maxMi = readMaxProgress();
-    const pct = (maxMi / CONFIG.TRAIL_TOTAL_MI) * 100;
+    const pct = (maxMi / routeTotalMi) * 100;
+    const displayedMi = toHeadlineMi(maxMi);
     fill.style.width = `${pct.toFixed(1)}%`;
-    label.textContent = `Off route — ${maxMi.toFixed(1)} of ${CONFIG.TRAIL_TOTAL_MI} mi`;
-    ffProgress.textContent = `Off route (last good: ${maxMi.toFixed(1)} mi)`;
+    label.textContent = `Off route — ${displayedMi.toFixed(1)} of ${CONFIG.TRAIL_TOTAL_MI} mi`;
+    ffProgress.textContent = `Off route (last good: ${displayedMi.toFixed(1)} mi)`;
     return;
   }
 
   const maxMi = Math.max(snap.progressMi, readMaxProgress());
   writeMaxProgress(maxMi);
-  const pct = (maxMi / CONFIG.TRAIL_TOTAL_MI) * 100;
+  const pct = (maxMi / routeTotalMi) * 100;
+  const displayedMi = toHeadlineMi(maxMi);
   fill.style.width = `${Math.min(100, pct).toFixed(1)}%`;
-  label.textContent = `${maxMi.toFixed(1)} of ${CONFIG.TRAIL_TOTAL_MI} mi (${Math.round(pct)}%)`;
-  ffProgress.textContent = `${maxMi.toFixed(1)} of ${CONFIG.TRAIL_TOTAL_MI} mi (${Math.round(pct)}%)`;
+  label.textContent = `${displayedMi.toFixed(1)} of ${CONFIG.TRAIL_TOTAL_MI} mi (${Math.round(pct)}%)`;
+  ffProgress.textContent = `${displayedMi.toFixed(1)} of ${CONFIG.TRAIL_TOTAL_MI} mi (${Math.round(pct)}%)`;
   ffElev.textContent =
-    `${Math.round(snap.elevGainFt).toLocaleString()} ft of ${CONFIG.TRAIL_TOTAL_GAIN_FT.toLocaleString()} ft`;
+    `${Math.round(snap.elevGainFt).toLocaleString()} ft of ${Math.round(routeTotalGainFt).toLocaleString()} ft`;
 }
 
 function updateFastFacts(current, todayItin, recentLocations, phase) {

@@ -26,16 +26,18 @@ public/wonderland-2026/  → served by the cslester.com static pipeline (Cameron
 
 ---
 
-## ⚠️ Open questions for Cameron (resolve before the relevant step)
+## ✅ Resolved: cslester.com IS served by nginx on wavebeam
 
-1. **Is cslester.com served by nginx on this same box (wavebeam)?**
-   - **YES →** do Step 8 (nginx proxy); frontend stays same-origin, no CORS.
-   - **NO** (hosted elsewhere) → skip Step 8. Cameron sets `CONFIG.API_BASE` in
-     `public/wonderland-2026/tracker.js` and `API_BASE` in
-     `public/wonderland-2026/admin/index.html` to the API's public URL, exposes
-     the API publicly, and keeps `CORS_ORIGIN=https://cslester.com`.
-2. **Existing nginx server block** for cslester.com — Cameron provides it so the
-   Step 8 proxy blocks merge cleanly (TLS/server_name not guessed here).
+Confirmed by Cameron. Implications:
+- **Do Step 8b** (nginx proxy). The frontend stays same-origin (`CONFIG.API_BASE`
+  stays `''`), so there is no CORS concern.
+- **Serve the frontend straight from the repo:** point the nginx web root for
+  `/wonderland-2026` at `/opt/wonderland-tracker/public/wonderland-2026` (or
+  symlink it). Then `git pull` updates the live site with no copy step.
+
+Still needed from Cameron: **the existing cslester.com nginx `server { }` block**,
+so the Step 8b proxy `location` blocks and the `/wonderland-2026` root merge
+cleanly (TLS/server_name are not guessed here).
 
 ---
 
