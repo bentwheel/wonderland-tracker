@@ -153,11 +153,14 @@ function daysBetween(fromKey, toKey) {
 // Map setup
 // ---------------------------------------------------------------------------
 // Frame the map on the Wonderland route's extent right away (instead of a
-// hardcoded center/zoom that then animated when the GPX loaded). loadTrail()
-// re-fits to the actual GPX bounds once loaded — for the real route that lands
-// on the same framing (no visible change); for a different GPX (e.g. the St
-// Helens test) it snaps cleanly into place. animate:false avoids the two-step.
-const DEFAULT_BOUNDS = L.latLngBounds([[46.74, -121.91], [46.96, -121.61]]);
+// hardcoded center/zoom that then animated when the GPX loaded). These are the
+// trail.gpx bounding box, rounded slightly OUTWARD so the initial fit is never
+// tighter than the GPX — otherwise the post-load fit would have to zoom out.
+// loadTrail() re-fits to the actual GPX bounds once loaded: for the real route
+// that's the identical framing (no visible change); for a different GPX (e.g.
+// the St Helens test) it snaps cleanly into place. animate:false avoids any
+// animated two-step.
+const DEFAULT_BOUNDS = L.latLngBounds([[46.7519, -121.9127], [46.9500, -121.6050]]);
 const FIT_OPTS = { padding: [20, 20], animate: false };
 const map = L.map('map');
 map.fitBounds(DEFAULT_BOUNDS, FIT_OPTS);
