@@ -2,7 +2,7 @@
  *
  * Responsibilities:
  *   - Draw the Leaflet map: USGS topo basemap, trail polyline (from trail.gpx),
- *     8 camp markers, breadcrumb of recent pings, pulsing current-position marker.
+ *     8 camp markers, a red "route traversed" fill, pulsing current-position marker.
  *   - Poll the API every 5 min for current location, recent breadcrumb, photos.
  *   - Snap the current ping to the trail to compute % progress + elevation gained.
  *   - Render the status panel, progress bar, fast facts, and failure-mode UI.
@@ -162,7 +162,7 @@ L.tileLayer(
 ).addTo(map);
 
 // Layer handles populated later.
-let breadcrumbLayer = L.layerGroup().addTo(map);
+let progressLayer = L.layerGroup().addTo(map); // red "route traversed" overlay
 let photoMarkersLayer = L.layerGroup().addTo(map);
 let currentMarker = null;
 let routePoints = []; // [{ lat, lon, elev, cumDistMi, cumGainFt }]
@@ -425,22 +425,26 @@ function renderCurrentMarker(ping, style) {
   );
 }
 
-function renderBreadcrumb(locations) {
-  breadcrumbLayer.clearLayers();
-  if (locations.length < 2) return;
-  const now = Date.now();
-  // Draw each consecutive segment with opacity faded by the segment's age.
-  for (let i = 1; i < locations.length; i++) {
-    const a = locations[i - 1];
-    const b = locations[i];
-    const ageH = (now - Date.parse(b.timestamp)) / 3600000;
-    // opacity 0.85 (fresh) -> 0.2 (48h old)
-    const opacity = Math.max(0.2, 0.85 - (ageH / CONFIG.BREADCRUMB_HOURS) * 0.65);
-    L.polyline(
-      [[a.lat, a.lon], [b.lat, b.lon]],
-      { color: '#e53935', weight: 3, opacity }
-    ).addTo(breadcrumbLayer);
+// Color the GPX route red from the trailhead up to the furthest point reached
+// (progressMi, in GPX miles); the rest stays the base blue ("trail yet to come").
+// This follows the actual trail geometry, so irregular polling never draws
+// "crow-flies" lines across switchbacks, and off-route pings are simply ignored.
+function renderRouteProgress(progressMi) {
+  progressLayer.clearLayers();
+  if (!routePoints.length || !(progressMi > 0)) return;
+
+  // Furthest route index whose cumulative distance is within progress.
+  let idx = 0;
+  for (let i = 0; i < routePoints.length; i++) {
+    if (routePoints[i].cumDistMi <= progressMi) idx = i;
+    else break;
   }
+  if (idx < 1) return;
+
+  const traversed = routePoints.slice(0, idx + 1).map((p) => [p.lat, p.lon]);
+  L.polyline(traversed, { color: '#e53935', weight: 4, opacity: 0.95 })
+    .addTo(progressLayer)
+    .bringToFront();
 }
 
 function updateProgressBar(snap, phase) {
@@ -737,32 +741,28 @@ async function poll() {
     updateFailureUI(current, phase);
 
     const locations = (recent && recent.locations) || [];
-    renderBreadcrumb(locations);
+
+    // Furthest on-route point across the recent breadcrumb + current fix. Drives
+    // both the progress bar (active only) and the red route-fill (all phases).
+    // Off-route pings (e.g. a stray Seattle test ping) don't snap, so they're
+    // ignored here — no more crow-flies lines.
+    const allRecent = (current && current.lat != null ? [current] : []).concat(locations);
+    const best = bestProgress(allRecent);
+    const curOffRoute = current && current.lat != null ? snapToRoute(current).offRoute : false;
 
     if (current && current.lat != null) {
       const markerStyle = phase === 'pre' ? 'test' : phase === 'post' ? 'final' : 'normal';
       renderCurrentMarker(current, markerStyle);
-      if (phase === 'active') {
-        // Progress = furthest on-route point across the breadcrumb + current fix
-        // (latched against backward motion in updateProgressBar). curOffRoute
-        // reflects only the latest fix, for the "off route" label.
-        const best = bestProgress([current].concat(locations));
-        const curOffRoute = snapToRoute(current).offRoute;
-        updateProgressBar({ best, curOffRoute }, phase);
-      } else {
-        // Pre/post: no snap at all (the geofence label is shown via status text).
-        updateProgressBar(null, phase);
-      }
-      updateFastFacts(current, todayItin, locations, phase);
-    } else {
-      // No current fix: hold the last known max; don't imply "off route".
-      if (phase === 'active') {
-        updateProgressBar({ best: bestProgress(locations), curOffRoute: false }, phase);
-      } else {
-        updateProgressBar(null, phase);
-      }
-      updateFastFacts(null, todayItin, locations, phase);
     }
+    updateProgressBar(phase === 'active' ? { best, curOffRoute } : null, phase);
+    updateFastFacts(current && current.lat != null ? current : null, todayItin, locations, phase);
+
+    // Red "route traversed" fill. Shown in every phase (incl. the pre-trip St
+    // Helens test), so the climb traces the trail itself, not raw GPS dots.
+    let progressMi = best ? best.progressMi : 0;
+    if (phase === 'active') progressMi = Math.max(progressMi, readMaxProgress());
+    else if (phase === 'post') progressMi = Math.max(progressMi, readMaxProgress()) || routeTotalMi;
+    renderRouteProgress(progressMi);
 
     renderPhotos(photoResp && photoResp.photos);
   } catch (e) {
