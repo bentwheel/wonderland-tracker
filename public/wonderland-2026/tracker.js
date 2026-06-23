@@ -152,7 +152,15 @@ function daysBetween(fromKey, toKey) {
 // ---------------------------------------------------------------------------
 // Map setup
 // ---------------------------------------------------------------------------
-const map = L.map('map').setView([46.85, -121.76], 11);
+// Frame the map on the Wonderland route's extent right away (instead of a
+// hardcoded center/zoom that then animated when the GPX loaded). loadTrail()
+// re-fits to the actual GPX bounds once loaded — for the real route that lands
+// on the same framing (no visible change); for a different GPX (e.g. the St
+// Helens test) it snaps cleanly into place. animate:false avoids the two-step.
+const DEFAULT_BOUNDS = L.latLngBounds([[46.74, -121.91], [46.96, -121.61]]);
+const FIT_OPTS = { padding: [20, 20], animate: false };
+const map = L.map('map');
+map.fitBounds(DEFAULT_BOUNDS, FIT_OPTS);
 
 // USGS Topo — free, no API key, accurate for backcountry.
 // TODO: swap to Mapbox Outdoors here for a more polished look (needs an API key).
@@ -239,9 +247,10 @@ async function loadTrail() {
       opacity: 0.9,
     }).addTo(map);
     // Center/zoom on whatever route is actually loaded — overrides the default
-    // Rainier view, so dropping in the St Helens test GPX (or any GPX) frames
-    // itself correctly instead of sitting off-screen.
-    map.fitBounds(line.getBounds(), { padding: [20, 20] });
+    // view, so dropping in the St Helens test GPX (or any GPX) frames itself
+    // correctly. Same FIT_OPTS (and no animation) as the initial fit, so for the
+    // real route this lands on the identical framing with no visible jump.
+    map.fitBounds(line.getBounds(), FIT_OPTS);
   }
   if (routeIsStub) {
     console.info('Trail is a STUB (camps connected linearly). Progress disabled until a real Gaia GPX is dropped in.');
