@@ -160,7 +160,7 @@ function daysBetween(fromKey, toKey) {
 // that's the identical framing (no visible change); for a different GPX (e.g.
 // the St Helens test) it snaps cleanly into place. animate:false avoids any
 // animated two-step.
-const DEFAULT_BOUNDS = L.latLngBounds([[46.7519, -121.9127], [46.9500, -121.6050]]);
+const DEFAULT_BOUNDS = L.latLngBounds([[46.7519, -121.9127], [46.9716, -121.6050]]);
 const FIT_OPTS = { padding: [20, 20], animate: false };
 const map = L.map('map');
 map.fitBounds(DEFAULT_BOUNDS, FIT_OPTS);
