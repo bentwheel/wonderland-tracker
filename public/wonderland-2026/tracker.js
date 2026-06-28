@@ -28,6 +28,19 @@ const CONFIG = {
   TRAIL_TOTAL_MI: 94.1,
   TRAIL_TOTAL_GAIN_FT: 27154,
   OFF_ROUTE_THRESHOLD_MI: 0.3,
+  // The Wonderland is a loop: the trailhead is ~0 mi from BOTH mile 0 and the
+  // mile-~85 finish, so a pure nearest-vertex snap is ambiguous there (and at
+  // any spot the trail nearly touches itself). When we know roughly where we
+  // already are, we add a tiny continuity cost (cost-miles per along-route mile
+  // of deviation) to break those ties toward the lobe we're actually on. Kept
+  // small so it only decides near-ties, never overriding real geographic
+  // closeness.
+  SNAP_CONTINUITY_W: 0.005,
+  // Bump when the progress-computation logic changes. On load, a mismatch with
+  // the stored 'progressSchema' clears the localStorage high-water mark so every
+  // viewer drops any stale/poisoned latch (e.g. a bogus 100% snapped at the
+  // trailhead) without a server change or any data being touched.
+  PROGRESS_SCHEMA: '2',
   BREADCRUMB_HOURS: 48,
   // Trip window (America/Los_Angeles calendar dates, inclusive). Drives the
   // pre-trip / active / post-trip UI states.
@@ -315,24 +328,30 @@ function stubRouteFromCamps() {
 // ---------------------------------------------------------------------------
 // Snap-to-route
 // ---------------------------------------------------------------------------
-function snapToRoute(ping) {
+// anchorMi: our last known position in trail miles, used to disambiguate the
+// loop (see CONFIG.SNAP_CONTINUITY_W). Pass null (the default) when there's no
+// prior context — then this is the original pure nearest-vertex snap, so the
+// off-route test and every existing caller behave exactly as before.
+function snapToRoute(ping, anchorMi = null) {
   if (!routePoints.length) return { offRoute: true, distanceMi: Infinity };
 
-  let minDist = Infinity;
-  let nearestIdx = 0;
+  let minDist = Infinity; // nearest vertex by geography; drives the off-route test
+  let best = null; // chosen vertex: geographically close, tie-broken by continuity
   for (let i = 0; i < routePoints.length; i++) {
-    const d = haversineMi(ping.lat, ping.lon, routePoints[i].lat, routePoints[i].lon);
-    if (d < minDist) {
-      minDist = d;
-      nearestIdx = i;
-    }
+    const p = routePoints[i];
+    const d = haversineMi(ping.lat, ping.lon, p.lat, p.lon);
+    if (d < minDist) minDist = d;
+    if (d > CONFIG.OFF_ROUTE_THRESHOLD_MI) continue;
+    const cost =
+      anchorMi == null ? d : d + CONFIG.SNAP_CONTINUITY_W * Math.abs(p.cumDistMi - anchorMi);
+    if (!best || cost < best.cost) best = { cost, rp: p };
   }
 
-  if (minDist > CONFIG.OFF_ROUTE_THRESHOLD_MI) {
+  if (minDist > CONFIG.OFF_ROUTE_THRESHOLD_MI || !best) {
     return { offRoute: true, distanceMi: minDist };
   }
 
-  const rp = routePoints[nearestIdx];
+  const rp = best.rp;
   return {
     offRoute: false,
     progressMi: rp.cumDistMi,
@@ -385,11 +404,32 @@ function writeMaxGain(ft) {
 // not just the current (lower) position. Returns { progressMi, elevGainFt } or
 // null if no ping is on the route.
 function bestProgress(pings) {
+  // Walk the breadcrumb in time order, carrying our last known mile forward as
+  // the snap anchor, so each fix resolves to the lobe we're actually on instead
+  // of the far side of the loop. Seed at the trailhead (mile 0). A pace gate
+  // drops any single fix implying superhuman speed — that's a bad snap, not
+  // real movement — so one wild ping can't poison the high-water mark.
+  const chrono = pings
+    .filter((p) => p && p.lat != null)
+    .sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
+
+  let anchorMi = 0;
+  let prevTime = null;
   let best = null;
-  for (const p of pings) {
-    if (!p || p.lat == null) continue;
-    const s = snapToRoute(p);
+  for (const p of chrono) {
+    const s = snapToRoute(p, anchorMi);
     if (s.offRoute) continue;
+    const t = p.timestamp != null ? new Date(p.timestamp).getTime() : null;
+    if (prevTime != null && t != null && s.progressMi > anchorMi) {
+      const hrs = Math.max((t - prevTime) / 3.6e6, 0);
+      // ~4 mph is a strong thru-hiker pace; allow a generous 6 mph + 0.5 mi slack.
+      if (s.progressMi - anchorMi > 6 * hrs + 0.5) {
+        prevTime = t; // time advances, but reject the implausible jump
+        continue;
+      }
+    }
+    anchorMi = s.progressMi;
+    if (t != null) prevTime = t;
     if (!best || s.progressMi > best.progressMi) {
       best = { progressMi: s.progressMi, elevGainFt: s.elevGainFt };
     }
@@ -787,6 +827,21 @@ async function poll() {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
+
+// One-time reset of the progress high-water mark when the progress logic
+// changes (see CONFIG.PROGRESS_SCHEMA). Clears any stale/poisoned latch for
+// every viewer on their next load — no server change, no ping data touched.
+// Runs before the first poll so the corrected math starts from a clean slate.
+try {
+  if (localStorage.getItem('progressSchema') !== CONFIG.PROGRESS_SCHEMA) {
+    localStorage.removeItem('maxProgressMi');
+    localStorage.removeItem('maxGainFt');
+    localStorage.setItem('progressSchema', CONFIG.PROGRESS_SCHEMA);
+  }
+} catch (e) {
+  /* localStorage unavailable (private mode, etc.) — nothing to migrate */
+}
+
 drawCamps();
 drawTrailhead();
 loadTrail().then(poll);
